@@ -8,46 +8,57 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Linking,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '../navigation/AuthNavigator';
 import { Colors } from '../utils/colors';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { signInWithEmail, signInWithGoogle } from '../firebase';
+import { signUpWithEmail, signInWithGoogle } from '../firebase';
 import { validate } from '../utils/validation';
-import { AuthStackParamList } from '../navigation/AuthNavigator';
 
-type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+type SignupNav = NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
 
-const LoginScreen = () => {
-  const navigation = useNavigation<LoginNav>();
+const SignupScreen = () => {
+  const navigation = useNavigation<SignupNav>();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [confirmPass, setConfirmPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
-  const handleLogin = async () => {
+  const handleSignup = async () => {
+    const nameErr = validate.name(name);
+    const phoneErr = validate.phone(phone);
     const emailErr = validate.email(email);
     const passErr = validate.password(password);
-    if (emailErr || passErr) {
-      setErrors({ email: emailErr ?? undefined, password: passErr ?? undefined });
+    const confirmErr = password !== confirmPass ? 'Passwords do not match' : null;
+
+    if (nameErr || phoneErr || emailErr || passErr || confirmErr) {
+      setErrors({
+        name: nameErr ?? undefined,
+        phone: phoneErr ?? undefined,
+        email: emailErr ?? undefined,
+        password: passErr ?? undefined,
+        confirmPass: confirmErr ?? undefined,
+      });
       return;
     }
     setErrors({});
     setLoading(true);
     try {
-      await signInWithEmail(email, password);
+      await signUpWithEmail(email, password, name, phone);
+      // Auth state listener in App.tsx handles navigation
     } catch (err: any) {
-      let msg = 'Login failed. Please check your credentials.';
-      if (err.code === 'auth/user-not-found') msg = 'No account found with this email.';
-      if (err.code === 'auth/wrong-password') msg = 'Incorrect password.';
+      let msg = 'Sign up failed. Please try again.';
+      if (err.code === 'auth/email-already-in-use') msg = 'This email is already registered.';
       if (err.code === 'auth/invalid-email') msg = 'Invalid email address.';
-      if (err.code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later.';
-      if (err.code === 'auth/invalid-credential') msg = 'Incorrect email or password.';
-      Alert.alert('Login Failed', msg);
+      if (err.code === 'auth/weak-password') msg = 'Password should be at least 6 characters.';
+      Alert.alert('Sign Up Failed', msg);
     } finally {
       setLoading(false);
     }
@@ -75,21 +86,33 @@ const LoginScreen = () => {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
-
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
             <Text style={styles.logoEmoji}>⚡</Text>
           </View>
           <Text style={styles.brand}>WorkPulse</Text>
-          <Text style={styles.tagline}>Track. Attend. Perform.</Text>
+          <Text style={styles.subtitle}>Create Your Account</Text>
         </View>
 
         {/* Form Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Welcome Back</Text>
-          <Text style={styles.cardSub}>Sign in to your account</Text>
-
+          <Input
+            label="Full Name"
+            placeholder="John Smith"
+            autoCapitalize="words"
+            value={name}
+            onChangeText={setName}
+            error={errors.name}
+          />
+          <Input
+            label="Phone Number"
+            placeholder="+91 98765 43210"
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+            error={errors.phone}
+          />
           <Input
             label="Email Address"
             placeholder="you@company.com"
@@ -101,20 +124,24 @@ const LoginScreen = () => {
           />
           <Input
             label="Password"
-            placeholder="••••••••"
+            placeholder="Minimum 8 characters"
             secureTextEntry
             value={password}
             onChangeText={setPassword}
             error={errors.password}
           />
-
-          <TouchableOpacity style={styles.forgotRow}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
+          <Input
+            label="Confirm Password"
+            placeholder="Re-enter your password"
+            secureTextEntry
+            value={confirmPass}
+            onChangeText={setConfirmPass}
+            error={errors.confirmPass}
+          />
 
           <Button
-            title="Sign In"
-            onPress={handleLogin}
+            title="Create Account"
+            onPress={handleSignup}
             loading={loading}
             style={styles.mainBtn}
           />
@@ -134,43 +161,28 @@ const LoginScreen = () => {
           />
         </View>
 
-        {/* Switch to Signup */}
+        {/* Switch to Login */}
         <View style={styles.switchRow}>
-          <Text style={styles.switchText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-            <Text style={styles.switchLink}>Sign Up</Text>
+          <Text style={styles.switchText}>Already have an account? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.switchLink}>Sign In</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.terms}>
-          By continuing, you agree to our{' '}
-          <Text style={styles.link} onPress={() => Linking.openURL('https://workpulse.app/terms')}>
-            Terms
-          </Text>{' '}
-          &{' '}
-          <Text style={styles.link} onPress={() => Linking.openURL('https://workpulse.app/privacy')}>
-            Privacy Policy
+        <View style={styles.dataNotice}>
+          <Text style={styles.dataNoticeText}>
+            🔒 Your name and phone are stored securely in our database and used only for your work profile.
           </Text>
-        </Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  scroll: {
-    padding: 24,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
+  flex: { flex: 1, backgroundColor: Colors.background },
+  scroll: { padding: 24, paddingTop: 60, paddingBottom: 40 },
+  header: { alignItems: 'center', marginBottom: 32 },
   logoContainer: {
     width: 72,
     height: 72,
@@ -192,12 +204,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: -0.5,
   },
-  tagline: {
-    fontSize: 13,
+  subtitle: {
+    fontSize: 16,
     color: Colors.textSecondary,
     marginTop: 4,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
   },
   card: {
     backgroundColor: Colors.surface,
@@ -205,43 +215,15 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: 20,
-  },
-  cardTitle: {
-    color: Colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  cardSub: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    marginBottom: 24,
-  },
-  forgotRow: {
-    alignSelf: 'flex-end',
     marginBottom: 16,
-    marginTop: -8,
   },
-  forgotText: {
-    color: Colors.primaryLight,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  mainBtn: {
-    marginTop: 8,
-    marginBottom: 20,
-  },
+  mainBtn: { marginTop: 8, marginBottom: 20 },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   dividerText: {
     color: Colors.textMuted,
     fontSize: 12,
@@ -257,6 +239,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginBottom: 16,
+    marginTop: 4,
   },
   switchText: { color: Colors.textSecondary, fontSize: 14 },
   switchLink: {
@@ -264,16 +247,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  terms: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
+  dataNotice: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
   },
-  link: {
-    color: Colors.primaryLight,
-    textDecorationLine: 'underline',
+  dataNoticeText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
   },
 });
 
-export default LoginScreen;
+export default SignupScreen;
