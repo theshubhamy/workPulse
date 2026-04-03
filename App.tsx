@@ -1,28 +1,58 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { getAuth, onAuthStateChanged, FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View, StyleSheet, StatusBar } from 'react-native';
 import { Colors } from './src/utils/colors';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import MainNavigator from './src/navigation/MainNavigator';
 import { requestUserPermission, notificationListener } from './src/firebase';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from './src/components/ToastConfig';
+import messaging from '@react-native-firebase/messaging';
+
+const auth = getAuth();
 
 function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
-
-  function onAuthStateChanged(u: FirebaseAuthTypes.User | null) {
-    setUser(u);
-    if (initializing) setInitializing(false);
-  }
+  const [role, setRole] = useState<'admin' | 'employee'>('employee');
 
   useEffect(() => {
-    const subscriber = auth().onAuthStateChanged(onAuthStateChanged);
-    requestUserPermission();
-    notificationListener();
-    return subscriber;
-  }, []);
+    const subscriber = onAuthStateChanged(auth, async u => {
+      setUser(u);
+      
+      if (u) {
+        const { getProfile, upsertProfile } = await import('./src/services/userService');
+        const profile = await getProfile();
+        if (profile) setRole(profile.role);
+
+        // Sync FCM Token
+        const token = await requestUserPermission();
+        if (token) {
+          await upsertProfile({ fcmToken: token });
+        }
+      }
+      
+      if (initializing) setInitializing(false);
+    });
+
+    // Foreground Push Notifications with Toasts
+    const notificationUnsub = messaging().onMessage(async remoteMessage => {
+      const { toast } = await import('./src/utils/toast');
+      if (remoteMessage.notification) {
+        toast.info(
+          remoteMessage.notification.title || 'New Notification',
+          remoteMessage.notification.body || ''
+        );
+      }
+    });
+
+    return () => {
+      if (subscriber) subscriber();
+      if (notificationUnsub) notificationUnsub();
+    };
+  }, [initializing]);
 
   if (initializing) {
     return (
@@ -39,8 +69,9 @@ function App() {
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
       <NavigationContainer>
-        {user ? <MainNavigator /> : <AuthNavigator />}
+        {user ? <MainNavigator role={role} /> : <AuthNavigator />}
       </NavigationContainer>
+      <Toast config={toastConfig} />
     </SafeAreaProvider>
   );
 }

@@ -9,11 +9,19 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
-import auth from '@react-native-firebase/auth';
+import { getAuth, onAuthStateChanged, sendPasswordResetEmail } from '@react-native-firebase/auth';
 import { Colors } from '../utils/colors';
 import { logout } from '../firebase';
-import { UserProfile, subscribeToProfile, upsertProfile } from '../services/userService';
+import { toast } from '../utils/toast';
+import {
+  UserProfile,
+  subscribeToProfile,
+  upsertProfile,
+  uploadProfilePicture,
+} from '../services/userService';
 import { getMonthlyStats } from '../services/attendanceService';
+import { Image } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 
 interface SettingRow {
   icon: string;
@@ -25,17 +33,20 @@ interface SettingRow {
   onToggle?: (v: boolean) => void;
 }
 
+const auth = getAuth();
+
 const ProfileScreen = () => {
-  const user = auth().currentUser;
+  const user = auth.currentUser;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [monthStats, setMonthStats] = useState({ present: 0, late: 0, total: 0 });
 
   useEffect(() => {
-    // Wait until auth resolves before subscribing to Firestore profile
-    const authUnsub = auth().onAuthStateChanged(firebaseUser => {
+    // Listen for auth state to handle stable session
+    const authUnsub = onAuthStateChanged(auth, firebaseUser => {
       if (!firebaseUser) {
         setLoading(false);
         return;
@@ -50,10 +61,8 @@ const ProfileScreen = () => {
         setMonthStats({ present: s.present, late: s.late, total: s.total }),
       );
 
-      // Return inner cleanup — but since onAuthStateChanged fires once for
-      // a stable session, we store the unsubscribe for effect cleanup
-      authUnsub(); // stop listening for further auth changes inside this effect
-      return profileUnsub;
+      // Effect cleanup will handle profileUnsub
+      return () => profileUnsub();
     });
 
     return () => authUnsub();
@@ -65,10 +74,30 @@ const ProfileScreen = () => {
   const role = profile?.role || 'employee';
   const initials = displayName
     .split(' ')
+    .filter(Boolean)
     .map((n: string) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  const handleAvatarPress = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.7,
+      });
+
+      if (result.didCancel || !result.assets?.[0]?.uri) return;
+
+      setUploading(true);
+      await uploadProfilePicture(result.assets[0].uri);
+      toast.success('Photo Updated', 'Your profile picture has been saved.');
+    } catch (e: any) {
+      toast.error('Upload Failed', e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to sign out?', [
@@ -79,14 +108,14 @@ const ProfileScreen = () => {
 
   const handleChangePassword = async () => {
     if (!user?.email) {
-      Alert.alert('Error', 'No email associated with this account.');
+      toast.error('Error', 'No email associated with this account.');
       return;
     }
     try {
-      await auth().sendPasswordResetEmail(user.email);
-      Alert.alert('📧 Email Sent', `Password reset link sent to ${user.email}`);
+      await sendPasswordResetEmail(auth, user.email);
+      toast.success('📧 Email Sent', `Password reset link sent to ${user.email}`);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error('Error', e.message);
     }
   };
 
@@ -127,7 +156,7 @@ const ProfileScreen = () => {
           label: 'Phone',
           sub: phone !== '–' ? phone : 'Not set',
           type: 'arrow',
-          onPress: () => Alert.alert('Coming Soon', 'Phone update will be available soon.'),
+          onPress: () => toast.info('Coming Soon', 'Phone update will be available soon.'),
         },
         {
           icon: '🛡️',
@@ -168,11 +197,23 @@ const ProfileScreen = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {/* Profile Hero */}
       <View style={styles.hero}>
-        <View style={styles.avatarRing}>
+        <TouchableOpacity 
+          style={styles.avatarRing} 
+          onPress={handleAvatarPress}
+          disabled={uploading}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            {uploading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : profile?.photoUrl ? (
+              <Image source={{ uri: profile.photoUrl }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
+            <View style={styles.camBtn}>
+              <Text style={{ fontSize: 10 }}>📸</Text>
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
         <Text style={styles.displayName}>{displayName}</Text>
         <Text style={styles.email}>{email}</Text>
         <View style={styles.rolePill}>
@@ -255,6 +296,21 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: { width: 80, height: 80 },
+  camBtn: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   avatarText: { color: Colors.white, fontSize: 28, fontWeight: '800' },
   displayName: {

@@ -1,5 +1,15 @@
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs, 
+  serverTimestamp 
+} from '@react-native-firebase/firestore';
+import { getAuth } from '@react-native-firebase/auth';
 import Geolocation from 'react-native-geolocation-service';
 import { Platform, PermissionsAndroid } from 'react-native';
 
@@ -11,7 +21,9 @@ export interface LocationLog {
   timestamp: Date;
 }
 
-const locationRef = () => firestore().collection('locationLogs');
+const db = getFirestore();
+const auth = getAuth();
+const locationColl = collection(db, 'locationLogs');
 
 /**
  * Request location permission (needed on Android).
@@ -53,34 +65,36 @@ export const logLocation = async (
   lat: number,
   lng: number,
 ): Promise<void> => {
-  const uid = auth().currentUser?.uid;
+  const uid = auth.currentUser?.uid;
   if (!uid) return;
 
-  await locationRef().add({
+  await addDoc(locationColl, {
     uid,
     lat,
     lng,
-    timestamp: firestore.FieldValue.serverTimestamp(),
+    timestamp: serverTimestamp(),
   });
 };
 
 /**
  * Get location history for the current user.
  */
-export const getLocationHistory = async (limit = 50): Promise<LocationLog[]> => {
-  const uid = auth().currentUser?.uid;
+export const getLocationHistory = async (count = 50): Promise<LocationLog[]> => {
+  const uid = auth.currentUser?.uid;
   if (!uid) return [];
 
-  const snap = await locationRef()
-    .where('uid', '==', uid)
-    .orderBy('timestamp', 'desc')
-    .limit(limit)
-    .get();
-
-  return snap.docs.map(doc => {
-    const d = doc.data();
+  const q = query(
+    locationColl,
+    where('uid', '==', uid),
+    orderBy('timestamp', 'desc'),
+    limit(count)
+  );
+  
+  const snap = await getDocs(q);
+  return snap.docs.map(docSnap => {
+    const d = docSnap.data();
     return {
-      id: doc.id,
+      id: docSnap.id,
       uid: d.uid,
       lat: d.lat,
       lng: d.lng,

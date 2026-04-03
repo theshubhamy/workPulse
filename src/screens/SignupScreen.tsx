@@ -16,6 +16,7 @@ import { Colors } from '../utils/colors';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { signUpWithEmail, signInWithGoogle } from '../firebase';
+import { toast } from '../utils/toast';
 import { validate } from '../utils/validation';
 
 type SignupNav = NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
@@ -52,13 +53,13 @@ const SignupScreen = () => {
     setLoading(true);
     try {
       await signUpWithEmail(email, password, name, phone);
-      // Auth state listener in App.tsx handles navigation
+      toast.success('Account Created', 'Welcome to WorkPulse!');
     } catch (err: any) {
       let msg = 'Sign up failed. Please try again.';
       if (err.code === 'auth/email-already-in-use') msg = 'This email is already registered.';
       if (err.code === 'auth/invalid-email') msg = 'Invalid email address.';
       if (err.code === 'auth/weak-password') msg = 'Password should be at least 6 characters.';
-      Alert.alert('Sign Up Failed', msg);
+      toast.error('Sign Up Failed', msg);
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,7 @@ const SignupScreen = () => {
       await signInWithGoogle();
     } catch (err: any) {
       if (err.code !== 'SIGN_IN_CANCELLED') {
-        Alert.alert('Google Sign-In Failed', err.message ?? 'Please try again.');
+        toast.error('Google Sign-In Failed', err.message ?? 'Please try again.');
       }
     } finally {
       setGoogleLoading(false);

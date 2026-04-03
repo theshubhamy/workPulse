@@ -6,12 +6,14 @@ import HomeScreen from '../screens/HomeScreen';
 import TasksScreen from '../screens/TasksScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AdminScreen from '../screens/AdminScreen';
 
 export type MainTabParamList = {
   Home: undefined;
   Tasks: undefined;
   Attendance: undefined;
   Profile: undefined;
+  Admin: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -28,7 +30,7 @@ const TabIcon: React.FC<TabIconProps> = ({ emoji, focused, color }) => (
   </View>
 );
 
-const MainNavigator = () => {
+const MainNavigator = ({ role }: { role: 'admin' | 'employee' }) => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -46,6 +48,7 @@ const MainNavigator = () => {
             Tasks: '📋',
             Attendance: '📊',
             Profile: '👤',
+            Admin: '🛡️',
           };
           return (
             <TabIcon emoji={icons[route.name] ?? '●'} focused={focused} color={color} />
@@ -55,22 +58,29 @@ const MainNavigator = () => {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{ title: 'Dashboard', tabBarLabel: 'Home' }}
+        options={{ title: 'Dashboard', tabBarLabel: 'Home', headerShown: false }}
       />
       <Tab.Screen
         name="Tasks"
         component={TasksScreen}
-        options={{ title: 'My Tasks', tabBarLabel: 'Tasks' }}
+        options={{ title: 'My Tasks', tabBarLabel: 'Tasks', headerShown: false }}
       />
+      {role === 'admin' && (
+        <Tab.Screen
+          name="Admin"
+          component={AdminScreen}
+          options={{ title: 'Admin Panel', tabBarLabel: 'Admin', headerShown: false }}
+        />
+      )}
       <Tab.Screen
         name="Attendance"
         component={AttendanceScreen}
-        options={{ title: 'Attendance', tabBarLabel: 'Attendance' }}
+        options={{ title: 'Attendance', tabBarLabel: 'Attendance', headerShown: false }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'My Profile', tabBarLabel: 'Profile' }}
+        options={{ title: 'My Profile', tabBarLabel: 'Profile', headerShown: false }}
       />
     </Tab.Navigator>
   );

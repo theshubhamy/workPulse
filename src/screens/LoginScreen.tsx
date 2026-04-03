@@ -16,6 +16,7 @@ import { Colors } from '../utils/colors';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { signInWithEmail, signInWithGoogle } from '../firebase';
+import { toast } from '../utils/toast';
 import { validate } from '../utils/validation';
 import { AuthStackParamList } from '../navigation/AuthNavigator';
 
@@ -47,7 +48,7 @@ const LoginScreen = () => {
       if (err.code === 'auth/invalid-email') msg = 'Invalid email address.';
       if (err.code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later.';
       if (err.code === 'auth/invalid-credential') msg = 'Incorrect email or password.';
-      Alert.alert('Login Failed', msg);
+      toast.error('Login Failed', msg);
     } finally {
       setLoading(false);
     }
@@ -59,7 +60,7 @@ const LoginScreen = () => {
       await signInWithGoogle();
     } catch (err: any) {
       if (err.code !== 'SIGN_IN_CANCELLED') {
-        Alert.alert('Google Sign-In Failed', err.message ?? 'Please try again.');
+        toast.error('Google Sign-In Failed', err.message ?? 'Please try again.');
       }
     } finally {
       setGoogleLoading(false);

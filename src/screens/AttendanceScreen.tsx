@@ -10,6 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Colors } from '../utils/colors';
+import { toast } from '../utils/toast';
 import {
   getTodayRecord,
   checkIn as firestoreCheckIn,
@@ -103,9 +104,9 @@ const AttendanceScreen = () => {
               try {
                 await firestoreCheckOut(location);
                 await loadData();
-                Alert.alert('✅ Checked Out', 'Have a great evening!');
+                toast.success('Successfully Checked Out', 'Have a great evening!');
               } catch (e: any) {
-                Alert.alert('Error', e.message);
+                toast.error('Check-out Failed', e.message);
               } finally {
                 setCheckingIn(false);
               }
@@ -115,11 +116,11 @@ const AttendanceScreen = () => {
       } else {
         await firestoreCheckIn(location);
         await loadData();
-        Alert.alert('✅ Checked In', `Recorded at ${new Date().toLocaleTimeString()}`);
+        toast.success('Successfully Checked In', `Recorded at ${new Date().toLocaleTimeString()}`);
         setCheckingIn(false);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error('Action Failed', e.message);
       setCheckingIn(false);
     }
   };
@@ -231,9 +232,14 @@ const AttendanceScreen = () => {
                   <Text style={[styles.timeLabel, { marginLeft: 16 }]}>Out: </Text>
                   <Text style={styles.timeValue}>{formatTime(rec.checkOutTime)}</Text>
                 </View>
-                <Text style={styles.hoursText}>
-                  {rec.totalHours !== null ? `⏱ ${formatHours(rec.totalHours)}` : ''}
-                </Text>
+                <View style={styles.recordMeta}>
+                  <Text style={styles.hoursText}>
+                    {rec.totalHours !== null ? `⏱ ${formatHours(rec.totalHours)}` : ''}
+                  </Text>
+                  {(rec.checkInLocation || rec.checkOutLocation) && (
+                    <Text style={styles.geoTag}>📍 Geo-verified</Text>
+                  )}
+                </View>
               </View>
               <View style={[styles.statusPill, { backgroundColor: `${cfg.color}20` }]}>
                 <Text style={{ fontSize: 12 }}>{cfg.emoji}</Text>
@@ -306,7 +312,9 @@ const styles = StyleSheet.create({
   recordTimes: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
   timeLabel: { color: Colors.textMuted, fontSize: 12 },
   timeValue: { color: Colors.text, fontSize: 13, fontWeight: '600' },
+  recordMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 },
   hoursText: { color: Colors.textSecondary, fontSize: 12 },
+  geoTag: { color: Colors.success, fontSize: 11, fontWeight: '600' },
   statusPill: {
     width: 32,
     height: 32,

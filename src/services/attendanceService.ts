@@ -1,5 +1,18 @@
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  query, 
+  where, 
+  limit, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  orderBy, 
+  serverTimestamp, 
+  Timestamp 
+} from '@react-native-firebase/firestore';
+import { getAuth } from '@react-native-firebase/auth';
 
 export interface AttendanceRecord {
   id: string;
@@ -13,7 +26,9 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
 }
 
-const attendanceRef = () => firestore().collection('attendance');
+const db = getFirestore();
+const auth = getAuth();
+const attendanceColl = collection(db, 'attendance');
 
 /**
  * Get today's date key in YYYY-MM-DD format.
@@ -27,21 +42,23 @@ const todayKey = () => {
  * Get today's attendance record for the current user (if any).
  */
 export const getTodayRecord = async (): Promise<AttendanceRecord | null> => {
-  const uid = auth().currentUser?.uid;
+  const uid = auth.currentUser?.uid;
   if (!uid) return null;
 
-  const snap = await attendanceRef()
-    .where('uid', '==', uid)
-    .where('date', '==', todayKey())
-    .limit(1)
-    .get();
-
+  const q = query(
+    attendanceColl,
+    where('uid', '==', uid),
+    where('date', '==', todayKey()),
+    limit(1)
+  );
+  
+  const snap = await getDocs(q);
   if (snap.empty) return null;
 
-  const doc = snap.docs[0];
-  const data = doc.data();
+  const docSnap = snap.docs[0];
+  const data = docSnap.data();
   return {
-    id: doc.id,
+    id: docSnap.id,
     uid: data.uid,
     checkInTime: data.checkInTime?.toDate(),
     checkOutTime: data.checkOutTime?.toDate() ?? null,
@@ -59,7 +76,7 @@ export const getTodayRecord = async (): Promise<AttendanceRecord | null> => {
 export const checkIn = async (
   location: { lat: number; lng: number } | null = null,
 ): Promise<AttendanceRecord> => {
-  const uid = auth().currentUser?.uid;
+  const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Not authenticated');
 
   // Prevent double check-in
@@ -68,14 +85,16 @@ export const checkIn = async (
     throw new Error('Already checked in today');
   }
 
-  const now = firestore.Timestamp.now();
+  const now = Timestamp.now();
   const date = todayKey();
+  
   // Late if after 9:30 AM
-  const hour = new Date().getHours();
-  const minute = new Date().getMinutes();
+  const nowTime = new Date();
+  const hour = nowTime.getHours();
+  const minute = nowTime.getMinutes();
   const status = hour > 9 || (hour === 9 && minute > 30) ? 'late' : 'present';
 
-  const docRef = await attendanceRef().add({
+  const docRef = await addDoc(attendanceColl, {
     uid,
     checkInTime: now,
     checkOutTime: null,
@@ -84,7 +103,7 @@ export const checkIn = async (
     totalHours: null,
     status,
     date,
-    createdAt: firestore.FieldValue.serverTimestamp(),
+    createdAt: serverTimestamp(),
   });
 
   return {
@@ -106,7 +125,7 @@ export const checkIn = async (
 export const checkOut = async (
   location: { lat: number; lng: number } | null = null,
 ): Promise<void> => {
-  const uid = auth().currentUser?.uid;
+  const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Not authenticated');
 
   const record = await getTodayRecord();
@@ -120,8 +139,9 @@ export const checkOut = async (
   let status = record.status;
   if (totalHours < 5) status = 'halfday';
 
-  await attendanceRef().doc(record.id).update({
-    checkOutTime: firestore.Timestamp.fromDate(now),
+  const docRef = doc(db, 'attendance', record.id);
+  await updateDoc(docRef, {
+    checkOutTime: Timestamp.fromDate(now),
     checkOutLocation: location,
     totalHours,
     status,
@@ -131,20 +151,22 @@ export const checkOut = async (
 /**
  * Get attendance history for the current user, ordered by most recent first.
  */
-export const getHistory = async (limit = 30): Promise<AttendanceRecord[]> => {
-  const uid = auth().currentUser?.uid;
+export const getHistory = async (count = 30): Promise<AttendanceRecord[]> => {
+  const uid = auth.currentUser?.uid;
   if (!uid) return [];
 
-  const snap = await attendanceRef()
-    .where('uid', '==', uid)
-    .orderBy('checkInTime', 'desc')
-    .limit(limit)
-    .get();
-
-  return snap.docs.map(doc => {
-    const d = doc.data();
+  const q = query(
+    attendanceColl,
+    where('uid', '==', uid),
+    orderBy('checkInTime', 'desc'),
+    limit(count)
+  );
+  
+  const snap = await getDocs(q);
+  return snap.docs.map(docSnap => {
+    const d = docSnap.data();
     return {
-      id: doc.id,
+      id: docSnap.id,
       uid: d.uid,
       checkInTime: d.checkInTime?.toDate(),
       checkOutTime: d.checkOutTime?.toDate() ?? null,
@@ -161,7 +183,7 @@ export const getHistory = async (limit = 30): Promise<AttendanceRecord[]> => {
  * Get monthly stats for the current user.
  */
 export const getMonthlyStats = async (month?: number, year?: number) => {
-  const uid = auth().currentUser?.uid;
+  const uid = auth.currentUser?.uid;
   if (!uid) return { present: 0, absent: 0, late: 0, halfday: 0, total: 0, percentage: 0 };
 
   const now = new Date();
@@ -169,19 +191,24 @@ export const getMonthlyStats = async (month?: number, year?: number) => {
   const y = year ?? now.getFullYear();
   const prefix = `${y}-${String(m).padStart(2, '0')}`;
 
-  const snap = await attendanceRef()
-    .where('uid', '==', uid)
-    .where('date', '>=', `${prefix}-01`)
-    .where('date', '<=', `${prefix}-31`)
-    .get();
-
+  const q = query(
+    attendanceColl,
+    where('uid', '==', uid),
+    where('date', '>=', `${prefix}-01`),
+    where('date', '<=', `${prefix}-31`)
+  );
+  
+  const snap = await getDocs(q);
   const records = snap.docs.map(d => d.data());
+
   const present = records.filter(r => r.status === 'present').length;
   const late = records.filter(r => r.status === 'late').length;
   const halfday = records.filter(r => r.status === 'halfday').length;
   const absent = records.filter(r => r.status === 'absent').length;
+  
   const total = records.length;
-  const percentage = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+  const attendedCount = present + late + halfday;
+  const percentage = total > 0 ? Math.round((attendedCount / total) * 100) : 0;
 
   return { present, absent, late, halfday, total, percentage };
 };

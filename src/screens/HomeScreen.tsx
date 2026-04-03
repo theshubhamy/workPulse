@@ -10,25 +10,27 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import auth from '@react-native-firebase/auth';
+import { getAuth } from '@react-native-firebase/auth';
 import { Colors } from '../utils/colors';
 import { logout } from '../firebase';
+import { toast } from '../utils/toast';
 import {
   getTodayRecord,
   checkIn as firestoreCheckIn,
   checkOut as firestoreCheckOut,
   AttendanceRecord,
 } from '../services/attendanceService';
-import { getTodayCompletedCount } from '../services/taskService';
+import { getTodayCompletedCount, getMyTasks, Task } from '../services/taskService';
 import {
   requestLocationPermission,
   getCurrentPosition,
-  logLocation,
   startLocationTracking,
 } from '../services/locationService';
 import { MainTabParamList } from '../navigation/MainNavigator';
 
 type HomeNav = BottomTabNavigationProp<MainTabParamList, 'Home'>;
+
+const auth = getAuth();
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -63,23 +65,49 @@ const QuickAction: React.FC<QuickActionProps> = ({ icon, label, color, onPress }
   </TouchableOpacity>
 );
 
+const TaskPreviewCard: React.FC<{ task: Task; onPress: () => void }> = ({ task, onPress }) => (
+  <TouchableOpacity style={styles.taskPreview} onPress={onPress}>
+    <View style={[styles.taskIndicator, { backgroundColor: task.priority === 'high' ? Colors.danger : Colors.warning }]} />
+    <View style={styles.taskPrevInfo}>
+      <Text style={styles.taskPrevTitle} numberOfLines={1}>{task.title}</Text>
+      <Text style={styles.taskPrevSub}>{task.location || 'No location'}</Text>
+    </View>
+    <Text style={styles.taskPrevArrow}>›</Text>
+  </TouchableOpacity>
+);
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeNav>();
-  const user = auth().currentUser;
+  const user = auth.currentUser;
 
   const [refreshing, setRefreshing] = useState(false);
   const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [tasksDone, setTasksDone] = useState(0);
+  const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
   const [stopTracking, setStopTracking] = useState<(() => void) | null>(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const checkedIn = todayRecord !== null && todayRecord.checkOutTime === null;
+
+  useEffect(() => {
+    let interval: any;
+    if (checkedIn) {
+      interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 60000); // Update every minute
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [checkedIn]);
 
   const displayName = user?.displayName ?? user?.email?.split('@')[0] ?? 'User';
   const initials = displayName
     .split(' ')
+    .filter(Boolean)
     .map((n: string) => n[0])
     .join('')
     .toUpperCase()
@@ -94,12 +122,14 @@ const HomeScreen = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const [record, doneCount] = await Promise.all([
+      const [record, doneCount, allTasks] = await Promise.all([
         getTodayRecord(),
         getTodayCompletedCount(),
+        getMyTasks(),
       ]);
       setTodayRecord(record);
       setTasksDone(doneCount);
+      setPendingTasks(allTasks.filter(t => t.status !== 'done').slice(0, 3));
     } catch (err) {
       console.warn('Home data load error:', err);
     }
@@ -141,7 +171,7 @@ const HomeScreen = () => {
                 stopTracking?.();
                 setStopTracking(null);
                 await loadData();
-                Alert.alert('✅ Checked Out', 'Have a great evening!');
+                toast.success('Successfully Checked Out', 'Have a great evening!');
               } catch (e: any) {
                 Alert.alert('Error', e.message);
               } finally {
@@ -158,11 +188,11 @@ const HomeScreen = () => {
           setStopTracking(() => cleanup);
         }
         await loadData();
-        Alert.alert('✅ Checked In', `Recorded at ${new Date().toLocaleTimeString()}`);
+        toast.success('Successfully Checked In', `Recorded at ${new Date().toLocaleTimeString()}`);
         setCheckingIn(false);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error('Action Failed', e.message);
       setCheckingIn(false);
     }
   };
@@ -184,7 +214,7 @@ const HomeScreen = () => {
     if (!todayRecord) return '0';
     if (todayRecord.totalHours !== null) return `${todayRecord.totalHours}`;
     // Still checked in — compute live
-    const diff = Date.now() - todayRecord.checkInTime.getTime();
+    const diff = currentTime - todayRecord.checkInTime.getTime();
     const hrs = Math.round((diff / (1000 * 60 * 60)) * 10) / 10;
     return `${hrs}`;
   };
@@ -248,8 +278,29 @@ const HomeScreen = () => {
         <StatCard icon="🔥" label="Streak" value="–" color={Colors.accent} />
       </View>
 
+      {/* Pending Tasks Section */}
+      {pendingTasks.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Priority Tasks</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Tasks')}>
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.taskPreviewList}>
+            {pendingTasks.map(task => (
+              <TaskPreviewCard 
+                key={task.id} 
+                task={task} 
+                onPress={() => navigation.navigate('Tasks')} 
+              />
+            ))}
+          </View>
+        </>
+      )}
+
       {/* Quick Actions */}
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Quick Actions</Text>
       <View style={styles.quickActionsGrid}>
         <QuickAction
           icon="📋"
@@ -364,6 +415,24 @@ const styles = StyleSheet.create({
   qaEmoji: { fontSize: 24 },
   qaLabel: { color: Colors.text, fontWeight: '600', fontSize: 13 },
   bottomSpacer: { height: 20 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  seeAll: { color: Colors.primary, fontSize: 12, fontWeight: '700' },
+  taskPreviewList: { marginBottom: 20 },
+  taskPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  taskIndicator: { width: 4, height: 24, borderRadius: 2, marginRight: 12 },
+  taskPrevInfo: { flex: 1 },
+  taskPrevTitle: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+  taskPrevSub: { color: Colors.textMuted, fontSize: 11, marginTop: 2 },
+  taskPrevArrow: { color: Colors.textMuted, fontSize: 18, marginLeft: 8 },
 });
 
 export default HomeScreen;

@@ -1,19 +1,38 @@
-import auth from '@react-native-firebase/auth';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { 
+  getAuth, 
+  signInWithCredential, 
+  GoogleAuthProvider, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  signOut as firebaseSignOut, 
+  updateProfile 
+} from '@react-native-firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  serverTimestamp 
+} from '@react-native-firebase/firestore';
 import messaging from '@react-native-firebase/messaging';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 // Configure Google Sign-In — replace WEB_CLIENT_ID with your Firebase console value
 GoogleSignin.configure({
   webClientId: '483626410386-kdj8it18j5hkif36h4gvkoohmqjm3v83.apps.googleusercontent.com',
 });
 
+const auth = getAuth();
+const db = getFirestore();
+
 // ─── Google Sign-In ──────────────────────────────────────────────────────────
 export const signInWithGoogle = async () => {
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   const signInResult = await GoogleSignin.signIn();
   const idToken = signInResult.data?.idToken ?? (signInResult as any).idToken;
-  const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-  const userCredential = await auth().signInWithCredential(googleCredential);
+  
+  const googleCredential = GoogleAuthProvider.credential(idToken);
+  const userCredential = await signInWithCredential(auth, googleCredential);
 
   // Ensure a Firestore profile exists for Google-sign-in users
   const { ensureProfileExists } = await import('../services/userService');
@@ -24,44 +43,39 @@ export const signInWithGoogle = async () => {
 
 // ─── Email / Password Sign-In ─────────────────────────────────────────────────
 export const signInWithEmail = async (email: string, password: string) => {
-  const userCredential = await auth().signInWithEmailAndPassword(email, password);
-  return userCredential;
+  return await signInWithEmailAndPassword(auth, email, password);
 };
 
-// ─── Email / Password Sign-Up (stores name & phone in displayName & metadata) ─
+// ─── Email / Password Sign-Up (stores name & phone in Firestore user doc) ─────
 export const signUpWithEmail = async (
   email: string,
   password: string,
   name: string,
   phone: string,
 ) => {
-  const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
 
-  // Save displayName
-  await user.updateProfile({ displayName: name });
+  // Save displayName in Auth
+  await updateProfile(user, { displayName: name });
 
-  // Store phone & name in Firestore user document (metadata)
-  // This is the standard pattern when Firebase Auth doesn't provide a phone field directly
-  const { default: firestore } = await import('@react-native-firebase/firestore');
-  await firestore().collection('users').doc(user.uid).set(
-    {
-      uid: user.uid,
-      name,
-      phone,
-      email,
-      role: 'employee',
-      createdAt: firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  // Create Firestore document
+  const userDoc = doc(db, 'users', user.uid);
+  await setDoc(userDoc, {
+    uid: user.uid,
+    name,
+    phone,
+    email,
+    role: 'employee',
+    createdAt: serverTimestamp(),
+  }, { merge: true });
 
   return userCredential;
 };
 
 // ─── Password Reset ───────────────────────────────────────────────────────────
 export const sendPasswordReset = async (email: string) => {
-  await auth().sendPasswordResetEmail(email);
+  await sendPasswordResetEmail(auth, email);
 };
 
 // ─── Sign Out ─────────────────────────────────────────────────────────────────
@@ -72,7 +86,7 @@ export const logout = async () => {
       await GoogleSignin.revokeAccess();
       await GoogleSignin.signOut();
     }
-    await auth().signOut();
+    await firebaseSignOut(auth);
   } catch (error) {
     console.error('Logout error:', error);
   }
@@ -84,6 +98,7 @@ export const requestUserPermission = async () => {
   const enabled =
     authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
     authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+  
   if (enabled) {
     const token = await messaging().getToken();
     console.log('FCM Token:', token);
