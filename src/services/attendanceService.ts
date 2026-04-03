@@ -180,6 +180,33 @@ export const getHistory = async (count = 30): Promise<AttendanceRecord[]> => {
 };
 
 /**
+ * Fetch attendance history for a specific employee (Admin only).
+ */
+export const getEmployeeAttendance = async (uid: string): Promise<AttendanceRecord[]> => {
+  const q = query(
+    attendanceColl,
+    where('uid', '==', uid),
+    orderBy('date', 'desc'),
+    limit(30)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(docSnap => {
+    const d = docSnap.data();
+    return {
+      id: docSnap.id,
+      uid: d.uid,
+      date: d.date,
+      checkInTime: d.checkInTime.toDate(),
+      checkOutTime: d.checkOutTime?.toDate() || null,
+      status: d.status as any,
+      totalHours: d.totalHours,
+      checkInLocation: d.checkInLocation,
+      checkOutLocation: d.checkOutLocation,
+    };
+  });
+};
+
+/**
  * Get monthly stats for the current user.
  */
 export const getMonthlyStats = async (month?: number, year?: number) => {
@@ -211,4 +238,27 @@ export const getMonthlyStats = async (month?: number, year?: number) => {
   const percentage = total > 0 ? Math.round((attendedCount / total) * 100) : 0;
 
   return { present, absent, late, halfday, total, percentage };
+};
+
+/**
+ * Generate a CSV string of attendance history.
+ */
+export const exportHistoryToCSV = async (): Promise<string> => {
+  const q = query(collection(db, 'attendance'), where('uid', '==', auth.currentUser?.uid), orderBy('date', 'desc'));
+  const snap = await getDocs(q);
+  const records = snap.docs.map(d => d.data());
+
+  let csv = 'Date,Status,Check-In,Check-Out,Hours Worked\n';
+  
+  records.forEach(r => {
+    const date = r.date;
+    const status = r.status.toUpperCase();
+    const checkIn = r.checkInTime?.toDate().toLocaleTimeString() || '-';
+    const checkOut = r.checkOutTime?.toDate().toLocaleTimeString() || '-';
+    const hours = r.totalHours?.toFixed(2) || '0.00';
+    
+    csv += `${date},${status},${checkIn},${checkOut},${hours}\n`;
+  });
+
+  return csv;
 };

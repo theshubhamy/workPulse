@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Auth Check
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Profile Pictures
+    match /profile_pictures/{userId} {
+      allow read: if isSignedIn();
+      allow write: if request.auth.uid == userId;
+    }
+    
+    // Task Verification Proofs
+    match /task_proofs/{taskId}/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if request.auth.uid == userId;
+    }
+    
+    // Global Read for Admins
+    // (Note: To keep it performant, we add it to the top level)
+    match /{allPaths=**} {
+      allow read, write: if isSignedIn() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}

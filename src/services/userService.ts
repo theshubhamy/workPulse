@@ -1,11 +1,11 @@
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDoc, 
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
   getDocs,
-  setDoc, 
-  onSnapshot, 
+  setDoc,
+  onSnapshot,
   serverTimestamp,
   query,
   where,
@@ -40,7 +40,7 @@ export const getProfile = async (): Promise<UserProfile | null> => {
 
   const userDoc = doc(db, 'users', user.uid);
   const snap = await getDoc(userDoc);
-  
+
   if (!snap.exists()) return null;
 
   const d = snap.data()!;
@@ -111,7 +111,7 @@ export const ensureProfileExists = async (): Promise<void> => {
 
   const userDoc = doc(db, 'users', user.uid);
   const snap = await getDoc(userDoc);
-  
+
   if (!snap.exists()) {
     await setDoc(userDoc, {
       uid: user.uid,
@@ -152,7 +152,7 @@ export const subscribeToProfile = (
   const user = auth.currentUser;
   if (!user) {
     onUpdate(null);
-    return () => {};
+    return () => { };
   }
 
   const currentUserUid = user.uid;
@@ -166,9 +166,8 @@ export const subscribeToProfile = (
       return;
     }
     const d = snap.data()!;
-    
+
     // Debug log to see exactly what Firestore is returning
-    console.log('Profile snapshot received:', { docId: snap.id, hasData: !!d, data: d });
 
     onUpdate({
       uid: d.uid || currentUserUid, // Ensure we use the stable auth UID

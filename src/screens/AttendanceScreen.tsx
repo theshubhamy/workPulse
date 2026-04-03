@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Share,
 } from 'react-native';
 import { Colors } from '../utils/colors';
 import { toast } from '../utils/toast';
@@ -17,6 +18,7 @@ import {
   checkOut as firestoreCheckOut,
   getHistory,
   getMonthlyStats,
+  exportHistoryToCSV,
   AttendanceRecord,
 } from '../services/attendanceService';
 import { requestLocationPermission, getCurrentPosition } from '../services/locationService';
@@ -91,7 +93,7 @@ const AttendanceScreen = () => {
       if (hasPermission) {
         try {
           location = await getCurrentPosition();
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (checkedIn) {
@@ -131,6 +133,18 @@ const AttendanceScreen = () => {
     setRefreshing(false);
   };
 
+  const handleExport = async () => {
+    try {
+      const csv = await exportHistoryToCSV();
+      await Share.share({
+        message: csv,
+        title: 'WorkPulse Attendance Report',
+      });
+    } catch (e: any) {
+      toast.error('Export Failed', e.message);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -148,8 +162,15 @@ const AttendanceScreen = () => {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
       }>
       <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Attendance</Text>
-        <Text style={styles.pageSubtitle}>{monthLabel}</Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.pageTitle}>Attendance</Text>
+            <Text style={styles.pageSubtitle}>{monthLabel}</Text>
+          </View>
+          <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
+            <Text style={styles.exportBtnText}>📤 Export</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Check-In Card */}
@@ -159,8 +180,8 @@ const AttendanceScreen = () => {
             {checkedIn
               ? 'Currently Working'
               : alreadyCheckedOut
-              ? 'Day Complete'
-              : 'Not Checked In'}
+                ? 'Day Complete'
+                : 'Not Checked In'}
           </Text>
           {todayRecord?.checkInTime ? (
             <Text style={styles.checkInTime}>
@@ -259,8 +280,18 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
   pageHeader: { marginBottom: 20 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   pageTitle: { color: Colors.text, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   pageSubtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 2 },
+  exportBtn: {
+    backgroundColor: `${Colors.primary}15`,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+  },
+  exportBtnText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   checkInCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',

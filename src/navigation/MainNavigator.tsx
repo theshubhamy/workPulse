@@ -9,11 +9,11 @@ import ProfileScreen from '../screens/ProfileScreen';
 import AdminScreen from '../screens/AdminScreen';
 
 export type MainTabParamList = {
-  Home: undefined;
+  Home: { role: 'admin' | 'employee' };
   Tasks: undefined;
+  Admin: undefined;
   Attendance: undefined;
   Profile: undefined;
-  Admin: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -58,6 +58,7 @@ const MainNavigator = ({ role }: { role: 'admin' | 'employee' }) => {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
+        initialParams={{ role }}
         options={{ title: 'Dashboard', tabBarLabel: 'Home', headerShown: false }}
       />
       <Tab.Screen

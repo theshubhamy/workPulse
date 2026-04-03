@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { getAuth } from '@react-native-firebase/auth';
 import { Colors } from '../utils/colors';
@@ -29,6 +29,7 @@ import {
 import { MainTabParamList } from '../navigation/MainNavigator';
 
 type HomeNav = BottomTabNavigationProp<MainTabParamList, 'Home'>;
+type HomeRoute = RouteProp<MainTabParamList, 'Home'>;
 
 const auth = getAuth();
 
@@ -80,6 +81,8 @@ const TaskPreviewCard: React.FC<{ task: Task; onPress: () => void }> = ({ task, 
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeNav>();
+  const route = useRoute<HomeRoute>();
+  const role = route.params?.role || 'employee';
   const user = auth.currentUser;
 
   const [refreshing, setRefreshing] = useState(false);
@@ -156,7 +159,7 @@ const HomeScreen = () => {
       if (hasPermission) {
         try {
           location = await getCurrentPosition();
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (checkedIn) {
@@ -258,6 +261,19 @@ const HomeScreen = () => {
                 : `${todayRecord.checkInTime.toLocaleTimeString()} – ${todayRecord.checkOutTime?.toLocaleTimeString() ?? ''}`}
             </Text>
           )}
+          {(checkedIn || parseFloat(hoursWorked()) > 0) && (
+            <View style={styles.progressRow}>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.min((parseFloat(hoursWorked()) / 8) * 100, 100)}%` }
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressLabel}>{Math.round(Math.min((parseFloat(hoursWorked()) / 8) * 100, 100))}%</Text>
+            </View>
+          )}
         </View>
         <TouchableOpacity
           style={[styles.checkBtn, { backgroundColor: checkedIn ? Colors.danger : Colors.success }]}
@@ -289,10 +305,10 @@ const HomeScreen = () => {
           </View>
           <View style={styles.taskPreviewList}>
             {pendingTasks.map(task => (
-              <TaskPreviewCard 
-                key={task.id} 
-                task={task} 
-                onPress={() => navigation.navigate('Tasks')} 
+              <TaskPreviewCard
+                key={task.id}
+                task={task}
+                onPress={() => navigation.navigate('Tasks')}
               />
             ))}
           </View>
@@ -302,6 +318,14 @@ const HomeScreen = () => {
       {/* Quick Actions */}
       <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Quick Actions</Text>
       <View style={styles.quickActionsGrid}>
+        {role === 'admin' && (
+          <QuickAction
+            icon="🛡️"
+            label="Manage Team"
+            color={Colors.danger}
+            onPress={() => navigation.navigate('Admin')}
+          />
+        )}
         <QuickAction
           icon="📋"
           label="My Tasks"
@@ -370,7 +394,11 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   statusInfo: { flex: 1 },
   statusTitle: { fontSize: 15, fontWeight: '700' },
-  statusSub: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  statusSub: { color: Colors.textMuted, fontSize: 12, marginTop: 2, marginBottom: 8 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressBar: { flex: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 2 },
+  progressLabel: { color: Colors.textMuted, fontSize: 10, fontWeight: '700' },
   checkBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   checkBtnText: { color: Colors.white, fontWeight: '700', fontSize: 13 },
   sectionTitle: {
